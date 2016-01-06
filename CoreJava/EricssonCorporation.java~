@@ -1,0 +1,38 @@
+import java.io.*;
+public class EricssonCorporation {
+    private static float overtime_threshold = 40;  // overtime payed when hours exceed 40 per week
+    private static float overtime_rate = 0.5;      // overtime payed at 50% extra on top of regular salary
+    private static float minimum_salary = 8.0;       
+    private static float maximum_hours = 60.0;
+    private static EricssonCorporation instance = null;
+    public static EricssonCorporation getInstance() {
+	if (instance == null) {
+	    instance = new EricssonCorporation();
+	}
+    }
+    //
+    // Compute Employee payment from salary and hours worked.
+    // Returns: false - if there is an error in the input data
+    //          true - if the payment was successfully calculated
+    //
+    public static boolean computePay(String name, float salary, float hours) {
+	if (salary < minimum_salary) {
+	    System.out.println(name + " - ERROR: salary $" + salary + " is below minimum allowed");
+	    return false;
+	}
+	if (hours < 0) {
+	    System.out.println(name + " - ERROR: hours worked $" + hours + " cannot be negative");
+	    return false;
+	}
+	if (hours > maximum_hours) {
+	    System.out.println(name + " - ERROR: hours worked $" + hours + " exceeds the maximum limit of " + maximum_hours );
+	    return false;
+	}
+	float overtime_hours = 0;
+	if (hours > overtime_threshold) {
+	    overtime_hours = hours - overtime_threshold;
+	}
+	float pay = salary*(hours + overtime_hours*overtime_rate);
+	return true;
+    }
+}

@@ -1,0 +1,158 @@
+
+/*
+    class MyMongoClient handles i/f with the Mongo DB. 
+    Implememnted as a singleton to avoid multple connections. If we want to
+    parallelize we may need to either use a pool of connections and/or
+    serialize access via a synchorize.
+    Also, there is no mechanism in this class to handle a DB connection failure.
+ */
+class MyMongoClient {
+    private static MyMongoClient m_instance = null;
+    private static MongoClient m_client = null;
+    private static DB m_db = null;
+    private static DBCollection m_entries = null;
+    private static DBCollection m_counter = null;
+    /*
+          FIXME: MyMongoClient ctor constains hard coded constants that should be configurable
+     */
+    private MyMongoClient() {
+	try {
+	    m_client = new MongoClient("localhost", 27017);
+	    m_db = m_client.getDB("test");                    
+	    m_entries = m_db.getCollection("entries");
+	    m_counter = m_db.getCollection("counters");
+	}
+	catch (MongoException e) {
+	     e.printStackTrace();
+        }   
+    }
+    private static Object getNextID() {
+	if (m_counter.count() == 0) {
+	    BasicDBObject document = new BasicDBObject();
+	    document.append("_id", "entries");
+            document.append("seq", 0);
+            m_counter.insert(document);
+	}
+        BasicDBObject searchQuery = new BasicDBObject("_id", "entries");
+        BasicDBObject increase = new BasicDBObject("seq", 1);
+        BasicDBObject updateQuery = new BasicDBObject("$inc", increase);
+        DBObject result = m_counter.findAndModify(searchQuery, null, null,
+            false, updateQuery, true, false);
+
+        return result.get("seq");
+    }
+    
+    public static MyMongoClient getInstance() {
+	if (m_instance == null) {
+	    m_instance = new MyMongoClient(); 
+	}
+	return m_instance;
+    }
+    
+    public static MyMongoResponse invoke(MyRESTendpoint endpoint, InputStream in) {
+        MyMongoResponse response = new MyMongoResponse();
+	WriteResult result;
+	System.out.println("invoke " + endpoint.asString());
+	
+	BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+	StringBuilder builder = new StringBuilder();
+	String line;
+	try {
+	    System.out.println("post data size=" + in.available());
+	    while((line = reader.readLine()) != null) {
+		System.out.println("GOT " + line);
+		builder.append(line);
+	    }
+	}
+	catch (IOException e) {
+	    e.printStackTrace();
+	}
+	String poststring = builder.toString();
+	String[] postlist = poststring.split("&");
+	int i;
+	
+        if (endpoint.getOperation() == CRUDop.CREATE) {
+	   BasicDBObject document = new BasicDBObject();
+	   document.append("_id", getNextID());
+
+	   for ( i=0 ; i<postlist.length ; i++) {
+	       String[] keyval = postlist[i].split("=");
+	       if ( keyval.length == 2) {
+		   document.append( keyval[0], keyval[1]);
+	       }
+	   }
+	   result = m_entries.insert(document);
+	   response.setBody(document.toString());
+	   response.setHttpStatus(200); // success
+	}
+	else if (endpoint.getOperation() == CRUDop.UPDATE) {
+	    if (endpoint.hasID()) {
+  	       BasicDBObject searchQuery = new BasicDBObject("_id", Integer.parseInt(endpoint.getID()));
+	       DBCursor cursor = m_entries.find(searchQuery);
+               if (cursor.count()==1) {
+		   BasicDBObject updateQuery =  new BasicDBObject();
+		   BasicDBObject newFields = new BasicDBObject();
+		   for ( i=0 ; i<postlist.length ; i++) {
+		       String[] keyval = postlist[i].split("=");
+		       if ( keyval.length == 2) {
+			   newFields.append( keyval[0], keyval[1]);
+		       }
+		   }
+		   updateQuery.append( "$set", newFields);
+		   result = m_entries.update(searchQuery, updateQuery);
+		   cursor = m_entries.find(searchQuery);
+		   response.setBody(cursor.next().toString());
+		   response.setHttpStatus(200); // success		   
+	       }
+	       else {
+		   System.out.println("ERROR: found multiple documents with ID = " + endpoint.getID());
+		   response.setHttpStatus(500); // success		   
+	       }
+	    }
+	    else {
+		System.out.println("ERROR: enpoint does not specify an ID" + endpoint.asString());
+		response.setHttpStatus(400); // failure		
+	    }
+	}
+	else if (endpoint.getOperation() == CRUDop.READ) {
+	    if (endpoint.hasID()) {
+  	       BasicDBObject searchQuery = new BasicDBObject("_id", Integer.parseInt(endpoint.getID()));
+	       DBCursor cursor = m_entries.find(searchQuery);
+               if (cursor.count()==1) {
+		   response.setBody(cursor.next().toString());
+		   response.setHttpStatus(200);
+	       }
+	       else {
+		   System.out.println("ERROR: found multiple documents with ID = " + endpoint.getID());
+		   response.setHttpStatus(500); // success
+	       }
+	    }
+	    else {
+		System.out.println("ERROR: enpoint does not specify an ID" + endpoint.asString());
+		response.setHttpStatus(400); // failure
+	    }
+	}
+	else if (endpoint.getOperation() == CRUDop.DELETE) {
+	    if (endpoint.hasID()) {
+  	       BasicDBObject searchQuery = new BasicDBObject("_id", Integer.parseInt(endpoint.getID()));
+	       DBCursor cursor = m_entries.find(searchQuery);
+               if (cursor.count()==1) {
+		   response.setBody(cursor.next().toString());
+		   result = m_entries.remove(searchQuery);
+		   response.setHttpStatus(200); // FIXME: should verify that it was deleted
+	       }
+	       else {
+		  System.out.println("ERROR: found multiple documents with ID = " + endpoint.getID());
+		  response.setHttpStatus(500); // internal server error
+	       }
+	    }
+	    else {
+		System.out.println("ERROR: enpoint does not specify an ID" + endpoint.asString());
+		response.setHttpStatus(400); // failure
+	    }
+	}
+
+	//	response.setBody(endpoint.asString());
+	return response;
+    }    
+}

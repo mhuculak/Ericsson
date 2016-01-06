@@ -1,0 +1,27 @@
+To compile the client:
+
+javac MyRESTclient.java
+
+To CREATE a document containing { name: mike } with the client:
+
+java MyRESTclient localhost 9876 POST name=mike
+
+To READ a document with ID=10:
+
+java MyRESTclient localhost 9876 GET 10
+
+To UPDATE a document (change mike to frank):
+
+java MyRESTclient localhost 9876 POST 10 name=frank
+
+To DELETE a document:
+
+java MyRESTclient localhost 9876 DELETE 10
+
+To compile the server:
+
+javac -cp ".;lib/*" mongodb/*.java
+
+To run the server:
+
+java -cp ".;lib/*" mongodb/MyRESTserver
